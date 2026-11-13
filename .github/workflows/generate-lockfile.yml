@@ -11,6 +11,9 @@ permissions:
 jobs:
   lockfile:
     runs-on: ubuntu-latest
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,19 +22,22 @@ jobs:
         with:
           node-version: '22'
           registry-url: https://registry.npmjs.org
-      - name: Resolve SDK 58 compatible dependencies
+      - name: Resolve Expo SDK 58 packages
         run: |
+          rm -f package-lock.json
           npm install --no-audit --no-fund
           npx expo install expo-router expo-status-bar expo-audio expo-file-system @react-native-async-storage/async-storage react react-native react-native-safe-area-context react-native-screens react-dom react-native-web @expo/metro-runtime
-          npx expo install --fix --non-interactive
+          npx expo install --fix
           npm install --save-dev typescript @types/react --no-audit --no-fund
-          npx expo install --fix --non-interactive
-      - name: Commit dependency updates
+          npx expo install --fix
+          npm ci --no-audit --no-fund
+      - name: Commit resolved manifest and lockfile
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json
           if ! git diff --cached --quiet; then
-            git commit -m "Resolve Expo SDK 58 dependencies and lockfile"
-            git push
+            git commit -m "Resolve Expo SDK 58 packages and lockfile"
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
