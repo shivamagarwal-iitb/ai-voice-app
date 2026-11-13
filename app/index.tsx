@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useState} from 'react';
+import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import type {Session} from '@supabase/supabase-js';
 import {Alert,FlatList,KeyboardAvoidingView,Platform,Pressable,SafeAreaView,StyleSheet,Text,TextInput,View} from 'react-native';
@@ -10,6 +10,40 @@ type Memory={id:string;body:string;kind:'thought'|'task'|'link'|'audio';createdA
 const STORE='voice-app-memories-v1';
 const C={bg:'#0C1220',panel:'#182238',edge:'#2A3650',ink:'#F7F8FC',muted:'#9AAAC5',accent:'#A8BAFF'};
 function AudioNote({uri}:{uri:string}){const player=useAudioPlayer(uri);return <Pressable onPress={()=>{player.seekTo(0);player.play();}} style={{paddingTop:10}}><Text style={{color:C.accent,fontWeight:'700'}}>▶ Play recording</Text></Pressable>;}
+const RecorderPanel=React.memo(function RecorderPanel({onSaved}:{onSaved:(uri:string)=>void}){
+ const recorder=useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+ const state=useAudioRecorderState(recorder);
+ const [phase,setPhase]=useState<'idle'|'starting'|'stopping'>('idle');
+ const busyRef=useRef(false);
+ const recordingRef=useRef(false);
+ async function record(){
+  if(busyRef.current)return;
+  busyRef.current=true;
+  const stopping=recordingRef.current||state.isRecording;
+  setPhase(stopping?'stopping':'starting');
+  try{
+   if(stopping){
+    await recorder.stop();
+    recordingRef.current=false;
+    if(!recorder.uri)throw new Error('Recording was not saved');
+    const target=new File(Paths.document,'voice-'+Date.now()+'.m4a');
+    new File(recorder.uri).copy(target);
+    onSaved(target.uri);
+   }else{
+    const permission=await AudioModule.requestRecordingPermissionsAsync();
+    if(!permission.granted){Alert.alert('Microphone access needed','Please enable microphone access in Settings.');return;}
+    await AudioModule.setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});
+    await recorder.prepareToRecordAsync();
+    recorder.record();
+    recordingRef.current=true;
+   }
+  }catch(e){Alert.alert('Recording error',String(e));}
+  finally{busyRef.current=false;setPhase('idle');}
+ }
+ const recording=recordingRef.current||state.isRecording;
+ const title=phase==='starting'?'Starting microphone…':phase==='stopping'?'Saving recording…':recording?'Recording… tap to save':'Tap to record a thought';
+ return <View style={s.hero}><Pressable onPress={record} disabled={phase!=='idle'} accessibilityRole="button" accessibilityLabel={recording?'Stop recording':'Start recording'} style={({pressed})=>[s.mic,recording&&{backgroundColor:'#FF8F9E'},pressed&&{opacity:0.7,transform:[{scale:0.96}]}]}><Text style={s.micSymbol}>{phase!=='idle'?'…':recording?'■':'●'}</Text></Pressable><Text style={s.heroTitle}>{title}</Text><Text style={s.small}>Recordings stay on this device for now</Text></View>;
+});
 export default function Home(){
  const [localAudio,setLocalAudio]=useState<Memory[]>([]),[audioLoaded,setAudioLoaded]=useState(false);
  const [items,setItems]=useState<Memory[]>([]),[loaded,setLoaded]=useState(false),[draft,setDraft]=useState(''),[query,setQuery]=useState(''),[kind,setKind]=useState<'thought'|'task'>('thought');
@@ -23,16 +57,14 @@ export default function Home(){
 
  useEffect(()=>{AsyncStorage.getItem(STORE+'-audio').then(raw=>{if(raw){const parsed=JSON.parse(raw);if(Array.isArray(parsed))setLocalAudio(parsed);}}).catch(()=>Alert.alert('Local audio','Could not load local recordings.')).finally(()=>setAudioLoaded(true));},[]);
  useEffect(()=>{if(audioLoaded)AsyncStorage.setItem(STORE+'-audio',JSON.stringify(localAudio)).catch(()=>Alert.alert('Local audio','Could not save recording list.'));},[localAudio,audioLoaded]);
- const recorder=useAudioRecorder(RecordingPresets.HIGH_QUALITY),state=useAudioRecorderState(recorder);
- function save(body:string,forced?:Memory['kind'],audioUri?:string){if(!audioUri)return;setLocalAudio(old=>[{id:'local-'+Date.now(),body:'Voice recording (on this device)',kind:'audio',createdAt:new Date().toISOString(),done:false,audioUri},...old]);}
- async function record(){try{if(state.isRecording){await recorder.stop();if(!recorder.uri)throw new Error('Recording was not saved');const source=new File(recorder.uri);const target=new File(Paths.document,'voice-'+Date.now()+'.m4a');source.copy(target);save('Voice recording','audio',target.uri);}else{const permission=await AudioModule.requestRecordingPermissionsAsync();if(!permission.granted){Alert.alert('Microphone access needed','Please enable microphone access in Settings.');return;}await AudioModule.setAudioModeAsync({allowsRecording:true,playsInSilentMode:true});await recorder.prepareToRecordAsync();recorder.record();}}catch(e){Alert.alert('Recording error',String(e));}}
+ const addRecording=useCallback((uri:string)=>setLocalAudio(old=>[{id:'local-'+Date.now(),body:'Voice recording (on this device)',kind:'audio',createdAt:new Date().toISOString(),done:false,audioUri:uri},...old]),[]);
  const results=useMemo(()=>[...localAudio,...items].filter(n=>(n.body+' '+n.kind).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)),[items,localAudio,query]);
  function remove(n:Memory){Alert.alert('Delete memory?','This removes it from your memory list.',[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:()=>{if(n.audioUri){setLocalAudio(old=>old.filter(x=>x.id!==n.id));try{new File(n.audioUri).delete();}catch{}}else removeCloud(n);}}]);}
  if(!authReady)return <SafeAreaView style={s.root}><Text style={s.empty}>Checking session…</Text></SafeAreaView>;
  if(!session)return <SafeAreaView style={s.root}><View style={{padding:26,gap:15,marginTop:55}}><Text style={s.eyebrow}>YOUR PRIVATE SECOND BRAIN</Text><Text style={s.title}>Sign in to your memory</Text><Text style={s.subtitle}>Your notes and tasks are stored privately in Supabase.</Text><TextInput style={s.search} placeholder="Email" placeholderTextColor={C.muted} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail}/><TextInput style={s.search} placeholder="Password (at least 6 characters)" placeholderTextColor={C.muted} secureTextEntry value={password} onChangeText={setPassword}/><Pressable style={s.button} disabled={busy} onPress={()=>signIn(false)}><Text style={s.buttonText}>{busy?'Please wait…':'Sign in'}</Text></Pressable><Pressable style={s.button} disabled={busy} onPress={()=>signIn(true)}><Text style={s.buttonText}>Create account</Text></Pressable></View></SafeAreaView>;
  return <SafeAreaView style={s.root}><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
   <View style={s.header}><Text style={s.eyebrow}>YOUR SECOND BRAIN</Text><Text style={s.title}>What's on your mind?</Text><Text style={s.subtitle}>Your thoughts and tasks sync privately to the cloud.</Text><Pressable onPress={()=>supabase.auth.signOut()}><Text style={s.action}>Sign out</Text></Pressable></View>
-  <View style={s.hero}><Pressable onPress={record} accessibilityRole="button" accessibilityLabel={state.isRecording?'Stop recording':'Start recording'} style={[s.mic,state.isRecording&&{backgroundColor:'#FF8F9E'}]}><Text style={s.micSymbol}>{state.isRecording?'■':'●'}</Text></Pressable><Text style={s.heroTitle}>{state.isRecording?'Recording… tap to save':'Tap to record a thought'}</Text><Text style={s.small}>Recordings stay on this device for now</Text></View>
+  <RecorderPanel onSaved={addRecording}/>
   <View style={s.compose}><View style={s.modes}><Pressable onPress={()=>setKind('thought')}><Text style={[s.mode,kind==='thought'&&s.selected]}>Thought</Text></Pressable><Pressable onPress={()=>setKind('task')}><Text style={[s.mode,kind==='task'&&s.selected]}>Task</Text></Pressable></View><TextInput multiline placeholder="Type a thought or paste a link…" placeholderTextColor={C.muted} style={s.input} value={draft} onChangeText={setDraft}/><Pressable style={s.button} disabled={cloudBusy} onPress={()=>saveCloud(draft)}><Text style={s.buttonText}>{cloudBusy?'Saving…':'Save to cloud →'}</Text></Pressable></View>
   <View style={s.searchBox}><Text style={s.section}>Your memory <Text style={{color:C.muted}}>({items.length+localAudio.length})</Text></Text><TextInput placeholder="Search thoughts, links, and tasks" placeholderTextColor={C.muted} style={s.search} value={query} onChangeText={setQuery}/></View>
   <FlatList data={results} keyExtractor={n=>n.id} contentContainerStyle={{paddingHorizontal:20,paddingBottom:32}} ListEmptyComponent={<Text style={s.empty}>{loaded?'Your saved thoughts will appear here.':'Loading…'}</Text>} renderItem={({item:n})=><View style={s.note}><View style={s.noteTop}><Text style={s.label}>{n.kind.toUpperCase()} · {new Date(n.createdAt).toLocaleDateString()}</Text><Pressable onPress={()=>remove(n)}><Text style={s.delete}>Delete</Text></Pressable></View><Text style={[s.noteText,n.done&&{textDecorationLine:'line-through',color:C.muted}]}>{n.body}</Text>{n.audioUri&&<AudioNote uri={n.audioUri}/>}{n.kind==='task'&&<Pressable onPress={()=>toggleCloud(n)}><Text style={s.action}>{n.done?'✓ Completed':'○ Mark complete'}</Text></Pressable>}</View>}/>
