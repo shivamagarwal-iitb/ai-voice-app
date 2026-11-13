@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "AI Voice App",
+    "slug": "ai-voice-app",
+    "scheme": "aivoiceapp",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow AI Voice App to record your thoughts."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false
+    }
+  }
+}
