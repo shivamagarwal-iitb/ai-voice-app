@@ -17,7 +17,10 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.shivamagarwal.aivoiceapp"
+      "bundleIdentifier": "com.shivamagarwal.aivoiceapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "owner": "shivamexpodevs-team",
     "extra": {
