@@ -16,6 +16,15 @@ if(missing.length)console.warn('Missing backend configuration:',missing.join(', 
 const openai=process.env.OPENAI_API_KEY?new OpenAI({apiKey:process.env.OPENAI_API_KEY}):null;
 const supabase=process.env.SUPABASE_URL&&process.env.SUPABASE_ANON_KEY
  ?createClient(process.env.SUPABASE_URL,process.env.SUPABASE_ANON_KEY,{auth:{persistSession:false}}):null;
+
+// iPhone-friendly Expo Go launcher. A browser page alone cannot guarantee
+// the Expo manifest is reachable; the launch button uses the native scheme.
+app.get('/open',(_req,res)=>{
+ res.set('Cache-Control','no-store');
+ res.set('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'");
+ res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>AI Voice App — Expo Go</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#101827;color:#fff;margin:0;display:grid;min-height:100vh;place-items:center}main{max-width:420px;padding:28px;text-align:center}h1{font-size:30px}p{color:#cbd5e1;line-height:1.6}a{display:block;padding:17px 20px;margin:24px 0;border-radius:14px;background:#60a5fa;color:#071425;font-size:18px;font-weight:700;text-decoration:none}small{color:#94a3b8}</style></head><body><main><h1>AI Voice App</h1><p>Open the app on your iPhone using Expo Go.</p><a href="exps://ai-voice-expo-stable.onrender.com">Open in Expo Go</a><p>If Expo Go reports an error, please take a screenshot. The server connection is still being tested.</p><small>Requires Expo Go installed on your iPhone.</small></main></body></html>`);
+});
+
 app.get('/health',(_req,res)=>res.json({ok:true,configured:missing.length===0}));
 async function authenticate(req,res,next){
  const token=req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
