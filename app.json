@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "AI Voice App",
-    "slug": "ai-voice-app",
+    "slug": "my-first-project-expo",
     "scheme": "aivoiceapp",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -18,6 +18,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.shivamagarwal.aivoiceapp"
+    },
+    "owner": "shivamexpodevs-team",
+    "extra": {
+      "eas": {
+        "projectId": "ade29100-7720-4751-9c7e-c1c754261820"
+      }
     }
   }
 }
